@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Ad Arma — The War Council</title>
+<meta name="description" content="A 20-minute hex battle of the classical world. Draft orders from the shared War Council, roll dice equal to your soldiers, and spring hidden stratagems on your enemy. Play the computer or a friend in a private room.">
+<meta property="og:title" content="Ad Arma — The War Council">
+<meta property="og:description" content="Classical hex warfare: drafted orders, treacherous dice, hidden stratagems. First to five Laurels.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='30' fill='%231a1512'/%3E%3Cpath d='M32 8 L44 20 L44 40 L32 56 L20 40 L20 20 Z' fill='%23a33327' stroke='%23c9a227' stroke-width='2.5'/%3E%3Cline x1='32' y1='16' x2='32' y2='48' stroke='%23c9a227' stroke-width='2.5'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+
+<!-- ======================= MENU ======================= -->
+<div id="screen-menu" class="screen">
+  <div class="menu-box">
+    <div class="brand">
+      <div class="brand-eagle">⚜</div>
+      <h1>AD ARMA</h1>
+      <div class="brand-sub">THE WAR COUNCIL</div>
+      <p class="brand-tag">Draft your orders. Bribe the dice. Spring the trap.</p>
+    </div>
+
+    <div class="menu-actions" id="menu-root">
+      <button class="btn btn-big" id="btn-vs-ai">⚔ &nbsp;Battle the Computer</button>
+      <button class="btn btn-big" id="btn-create-room">🏛 &nbsp;Raise a Private Room</button>
+      <button class="btn btn-big" id="btn-join-room">📜 &nbsp;Join with a Code</button>
+      <button class="btn btn-ghost" id="btn-howto">How to Play</button>
+    </div>
+
+    <div class="menu-actions hidden" id="menu-ai-setup">
+      <div class="setup-row"><label>Enemy Commander</label>
+        <div class="seg" id="seg-difficulty">
+          <button data-v="legate" class="on">Legate<small>gentle</small></button>
+          <button data-v="consul">Consul<small>capable</small></button>
+          <button data-v="imperator">Imperator<small>ruthless</small></button>
+        </div>
+      </div>
+      <div class="setup-row"><label>Battlefield</label>
+        <div class="seg" id="seg-scenario">
+          <button data-v="openField" class="on">Open Field</button>
+          <button data-v="riverCrossing">River Crossing</button>
+          <button data-v="hillCountry">Hill Country</button>
+          <button data-v="randomField">Random</button>
+        </div>
+      </div>
+      <div class="setup-row"><label>Muster</label>
+        <div class="seg" id="seg-deploy">
+          <button data-v="standard" class="on">Standard<small>mirrored lines</small></button>
+          <button data-v="plans">Battle Plans<small>hidden deployment</small></button>
+        </div>
+      </div>
+      <button class="btn btn-big" id="btn-start-ai">Sound the Horns</button>
+      <button class="btn btn-ghost" id="btn-ai-back">Back</button>
+    </div>
+
+    <div class="menu-actions hidden" id="menu-create-setup">
+      <div class="setup-row"><label>Battlefield</label>
+        <div class="seg" id="seg-scenario-mp">
+          <button data-v="openField" class="on">Open Field</button>
+          <button data-v="riverCrossing">River Crossing</button>
+          <button data-v="hillCountry">Hill Country</button>
+          <button data-v="randomField">Random</button>
+        </div>
+      </div>
+      <div class="setup-row"><label>Muster</label>
+        <div class="seg" id="seg-deploy-mp">
+          <button data-v="standard" class="on">Standard<small>mirrored lines</small></button>
+          <button data-v="plans">Battle Plans<small>hidden deployment</small></button>
+        </div>
+      </div>
+      <div class="setup-row"><label>Your Name</label>
+        <input id="create-name" class="input" maxlength="16" placeholder="Commander">
+      </div>
+      <button class="btn btn-big" id="btn-do-create">Open the Gates</button>
+      <button class="btn btn-ghost" id="btn-create-back">Back</button>
+    </div>
+
+    <div class="menu-actions hidden" id="menu-join-setup">
+      <div class="setup-row"><label>Room Code</label>
+        <input id="join-code" class="input input-code" maxlength="4" placeholder="XXXX" autocapitalize="characters">
+      </div>
+      <div class="setup-row"><label>Your Name</label>
+        <input id="join-name" class="input" maxlength="16" placeholder="Commander">
+      </div>
+      <button class="btn btn-big" id="btn-do-join">March</button>
+      <button class="btn btn-ghost" id="btn-join-back">Back</button>
+    </div>
+
+    <div class="menu-foot">
+      <span id="menu-error" class="err"></span>
+    </div>
+  </div>
+</div>
+
+<!-- ======================= LOBBY ======================= -->
+<div id="screen-lobby" class="screen hidden">
+  <div class="menu-box">
+    <h2 class="lobby-title">The camp is raised</h2>
+    <div class="room-code" id="lobby-code">····</div>
+    <p class="lobby-hint">Send this code — or the link — to your enemy.</p>
+    <button class="btn" id="btn-copy-link">Copy Invite Link</button>
+    <p class="lobby-wait" id="lobby-status">Waiting for the enemy to arrive<span class="dots"></span></p>
+    <button class="btn btn-ghost" id="btn-lobby-leave">Strike the Tents (leave)</button>
+  </div>
+</div>
+
+<!-- ======================= GAME ======================= -->
+<div id="screen-game" class="screen hidden">
+  <header id="topbar">
+    <div class="tb-side" id="tb-side-0">
+      <span class="tb-name" id="tb-name-0">Rome</span>
+      <span class="tb-laurels" id="tb-laurels-0"></span>
+      <span class="tb-fortuna" id="tb-fortuna-0" title="Fortuna">☘ 0</span>
+      <span class="tb-scrolls" id="tb-scrolls-0" title="Armed stratagems"></span>
+    </div>
+    <div class="tb-mid">
+      <div id="tb-turn">—</div>
+      <div id="tb-night" title="Nightfall">☀</div>
+    </div>
+    <div class="tb-side tb-right" id="tb-side-1">
+      <span class="tb-scrolls" id="tb-scrolls-1" title="Armed stratagems"></span>
+      <span class="tb-fortuna" id="tb-fortuna-1" title="Fortuna">☘ 0</span>
+      <span class="tb-laurels" id="tb-laurels-1"></span>
+      <span class="tb-name" id="tb-name-1">Carthage</span>
+    </div>
+  </header>
+
+  <div id="layout">
+    <div id="board-wrap">
+      <canvas id="board"></canvas>
+      <div id="board-banner" class="hidden"></div>
+    </div>
+    <aside id="panel">
+      <div id="council">
+        <div class="panel-title">THE WAR COUNCIL</div>
+        <div id="council-row"></div>
+      </div>
+      <div id="context">
+        <div id="ctx-text"></div>
+        <div id="ctx-buttons"></div>
+      </div>
+      <div id="log"><div class="panel-title">CHRONICLE</div><div id="log-lines"></div></div>
+      <div id="panel-foot">
+        <button class="btn btn-tiny" id="btn-rules">Rules</button>
+        <button class="btn btn-tiny" id="btn-sound">🔊</button>
+        <button class="btn btn-tiny" id="btn-resign">Resign</button>
+      </div>
+    </aside>
+  </div>
+</div>
+
+<!-- ======================= OVERLAYS ======================= -->
+<div id="dicetray" class="overlay hidden">
+  <div class="tray">
+    <div class="tray-title" id="tray-title">The dice fall</div>
+    <div class="tray-dice" id="tray-dice"></div>
+    <div class="tray-info" id="tray-info"></div>
+    <div class="tray-buttons" id="tray-buttons"></div>
+  </div>
+</div>
+
+<div id="sealreveal" class="overlay hidden">
+  <div class="seal-box">
+    <div class="seal-wax" id="seal-wax">✠</div>
+    <div class="seal-name" id="seal-name">AMBUSH</div>
+    <div class="seal-desc" id="seal-desc"></div>
+  </div>
+</div>
+
+<div id="modal" class="overlay hidden">
+  <div class="modal-box" id="modal-box"></div>
+</div>
+
+<div id="toast" class="hidden"></div>
+
+<script type="module" src="/js/main.js"></script>
+</body>
+</html>
