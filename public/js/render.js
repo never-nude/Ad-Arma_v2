@@ -43,8 +43,12 @@ export class BoardRenderer {
   }
 
   setView(view, mySide) {
+    const dimsChanged = !this.view
+      || this.view.board.cols !== view.board.cols
+      || this.view.board.rows !== view.board.rows;
     this.view = view;
     this.mySide = mySide;
+    if (dimsChanged) this.resize();
     // snap any unit we haven't seen yet; keep animated positions for the rest
     for (const u of view.units) {
       if (!this.pos.has(u.id)) this.pos.set(u.id, this._px(u.q, u.r));
@@ -61,12 +65,14 @@ export class BoardRenderer {
     this.canvas.width = w * dpr;
     this.canvas.height = h * dpr;
     this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    // fit 13 cols x 9 rows with margin
-    const sw = w / (Math.sqrt(3) * (C.BOARD_COLS + 1.2));
-    const sh = h / (1.5 * C.BOARD_ROWS + 1.4);
-    this.size = Math.max(12, Math.min(sw, sh));
-    const bw = Math.sqrt(3) * this.size * (C.BOARD_COLS + 0.5);
-    const bh = this.size * (1.5 * (C.BOARD_ROWS - 1) + 2);
+    // fit the current board with margin (13x9 until a view arrives)
+    const cols = this.view ? this.view.board.cols : 13;
+    const rows = this.view ? this.view.board.rows : 9;
+    const sw = w / (Math.sqrt(3) * (cols + 1.2));
+    const sh = h / (1.5 * rows + 1.4);
+    this.size = Math.max(9, Math.min(sw, sh));
+    const bw = Math.sqrt(3) * this.size * (cols + 0.5);
+    const bh = this.size * (1.5 * (rows - 1) + 2);
     this.origin = { x: (w - bw) / 2 + Math.sqrt(3) * this.size / 2, y: (h - bh) / 2 + this.size };
     // re-snap all units on resize
     if (this.view) for (const u of this.view.units) this.pos.set(u.id, this._px(u.q, u.r));
@@ -202,7 +208,7 @@ export class BoardRenderer {
       for (const [k] of Object.entries(this.view.board.cells)) {
         const { q, r } = H.unkey(k);
         const col = colOf(q, r);
-        const sec = C.SECTIONS.findIndex(([a, b]) => col >= a && col <= b);
+        const sec = this.view.board.sections.findIndex(([a, b]) => col >= a && col <= b);
         if (sec === this.hi.sectionPick) {
           const { x, y } = this._px(q, r);
           this._hexPath(x, y, s * 0.985);

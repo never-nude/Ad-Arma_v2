@@ -41,12 +41,16 @@ export function aiAction(view, difficulty = 'consul') {
 // jitter so no two musters are identical.
 function planDeployment(view, side) {
   const mine = aliveUnits(view, side);
-  const front = side === 0 ? 6 : 2;   // row nearest the enemy
-  const mid = side === 0 ? 7 : 1;
-  const back = side === 0 ? 8 : 0;
+  const zone = view.board.deployZones[side];
+  const cols = view.board.cols;
+  const center = Math.floor(cols / 2);
+  // side 0's zone sits south, so its row nearest the enemy is the lowest one
+  const front = side === 0 ? zone.minRow : zone.maxRow;
+  const back = side === 0 ? zone.maxRow : zone.minRow;
+  const mid = Math.round((front + back) / 2);
   const cells = Object.entries(view.board.cells)
     .map(([k, t]) => ({ ...H.unkey(k), t }))
-    .filter(c => c.t !== 'river' && inDeployZone(side, c.r));
+    .filter(c => c.t !== 'river' && inDeployZone(view, side, c.r));
   const used = new Set();
 
   const fordCols = Object.entries(view.board.cells)
@@ -54,24 +58,31 @@ function planDeployment(view, side) {
     .map(([k]) => { const h = H.unkey(k); return colOf(h.q, h.r); });
 
   const wingCols = fordCols.length >= 2
-    ? fordCols : fordCols.length === 1 ? [fordCols[0], fordCols[0] > 6 ? 2 : 10] : [2, 10];
-  const screenCols = fordCols.length ? fordCols.slice(0, 2) : [3, 9];
+    ? fordCols
+    : fordCols.length === 1 ? [fordCols[0], fordCols[0] > center ? 2 : cols - 3] : [2, cols - 3];
+  const screenCols = fordCols.length ? fordCols.slice(0, 2) : [3, cols - 4];
   while (screenCols.length < 2) screenCols.push(screenCols[0] ?? 3);
+
+  // infantry line spreads outward from the center
+  const lineCols = [];
+  for (let i = 0; lineCols.length < mine.length; i++) {
+    lineCols.push(center + (i % 2 ? 1 : -1) * Math.ceil(i / 2));
+  }
 
   const wish = [];
   const gen = mine.find(u => u.type === 'general');
-  if (gen) wish.push({ u: gen, col: 6, row: back, hill: 0 });
+  if (gen) wish.push({ u: gen, col: center, row: back, hill: 0 });
   mine.filter(u => u.type === 'infantry').forEach((u, i) => {
-    wish.push({ u, col: [5, 6, 7, 4][i % 4], row: mid, hill: 0.5 });
+    wish.push({ u, col: lineCols[i], row: mid, hill: 0.5 });
   });
   mine.filter(u => u.type === 'cavalry').forEach((u, i) => {
-    wish.push({ u, col: wingCols[i % wingCols.length], row: mid, hill: 0 });
+    wish.push({ u, col: i < 2 ? wingCols[i % wingCols.length] : center + (i % 2 ? 2 : -2), row: mid, hill: 0 });
   });
   mine.filter(u => u.type === 'skirmisher').forEach((u, i) => {
-    wish.push({ u, col: screenCols[i % screenCols.length], row: front, hill: 2 });
+    wish.push({ u, col: i < 2 ? screenCols[i] : lineCols[i * 2 % lineCols.length], row: front, hill: 2 });
   });
   // any unit type not covered above (future-proofing)
-  for (const u of mine) if (!wish.some(w => w.u.id === u.id)) wish.push({ u, col: 6, row: mid, hill: 0 });
+  for (const u of mine) if (!wish.some(w => w.u.id === u.id)) wish.push({ u, col: center, row: mid, hill: 0 });
 
   const placements = [];
   for (const w of wish) {
@@ -384,7 +395,7 @@ function bestSection(view, side) {
   const pressure = [0, 0, 0];
   for (const u of aliveUnits(view, side)) {
     if (u.type === 'general') continue;
-    const sec = sectionOf(u.q, u.r);
+    const sec = sectionOf(view.board, u.q, u.r);
     if (sec === -1) continue;
     const near = aliveUnits(view, 1 - side).filter(e => H.distance(u, e) <= 3).length;
     pressure[sec] += near;

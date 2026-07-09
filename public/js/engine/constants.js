@@ -1,9 +1,9 @@
 // Every balance knob in the game lives here — one-pass tuning sweeps.
 
 export const C = {
-  LAURELS_TO_WIN: 5,
+  // Laurel targets are per-scenario (state.laurelTarget) — see scenarios.js
   GENERAL_LAURELS: 2,
-  NIGHTFALL_TURN: 60,    // after this many player-turns, night ends the battle
+  NIGHTFALL_TURN: 60,    // default; scenarios may override (state.nightfallTurn)
 
   COUNCIL_SIZE: 5,       // face-up tiles in the War Council row
   COIN_CAP: 3,           // max bribe coins on one tile
@@ -20,8 +20,8 @@ export const C = {
   ARMS_PER_TURN: 1,
   OMEN_FORTUNA: 1,           // rolling a 1 pays the roller
   DEATH_FORTUNA: 1,          // the gods pity the fallen
-  DESPERATE_AT: 4,           // when opponent first reaches this many laurels...
-  DESPERATE_FORTUNA: 2,      // ...you receive this
+  DESPERATE_BEFORE_WIN: 1,   // Desperate Hour: enemy within this many laurels of their target...
+  DESPERATE_FORTUNA: 2,      // ...pays you this
   AUSPICES_FORTUNA: 2,
 
   // d6 outcomes
@@ -47,11 +47,7 @@ export const C = {
   FOREST_MAX_DICE: 2,
   FORD_MAX_DICE: 2,
   MIN_DICE: 1,
-
-  BOARD_COLS: 13,
-  BOARD_ROWS: 9,
-  // column spans, inclusive: [Left, Center, Right] — used only for trap targeting
-  SECTIONS: [[0, 3], [4, 8], [9, 12]],
+  // board dimensions, sections, armies, deploy zones: per-scenario (scenarios.js)
 };
 
 export const UNIT_TYPES = {

@@ -551,12 +551,13 @@ function draftView() {
 
 function deployZoneKeys() {
   const v = app.view;
+  const zone = v.board.deployZones[app.mySide];
   return Object.entries(v.board.cells)
     .filter(([, t]) => t !== 'river')
     .map(([k]) => k)
     .filter(k => {
       const { r } = H.unkey(k);
-      return app.mySide === 0 ? r >= 6 : r <= 2;
+      return r >= zone.minRow && r <= zone.maxRow;
     });
 }
 

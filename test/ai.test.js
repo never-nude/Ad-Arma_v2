@@ -24,10 +24,10 @@ export function playGame({ scenarioId = 'openField', seed, diffs = ['consul', 'c
 }
 
 test('AI vs AI games finish legally on all scenarios', () => {
-  const scenarios = ['openField', 'riverCrossing', 'hillCountry', 'randomField'];
+  const scenarios = ['openField', 'riverCrossing', 'hillCountry', 'randomField', 'grandField', 'greatPlain'];
   const lengths = [];
   for (let g = 0; g < 12; g++) {
-    const out = playGame({ scenarioId: scenarios[g % 4], seed: 'ai-' + g, deployMode: g % 3 === 0 });
+    const out = playGame({ scenarioId: scenarios[g % 6], seed: 'ai-' + g, deployMode: g % 3 === 0 });
     lengths.push(out.turns);
   }
   const avg = lengths.reduce((a, b) => a + b, 0) / lengths.length;

@@ -32,7 +32,7 @@ export function updateTopbar(view, mySide) {
     $(`tb-name-${side}`).textContent = view.names[side] + (side === mySide ? ' (you)' : '');
     const l = view.laurels[side];
     $(`tb-laurels-${side}`).innerHTML =
-      Array.from({ length: C.LAURELS_TO_WIN }, (_, i) =>
+      Array.from({ length: view.laurelTarget[side] }, (_, i) =>
         `<span class="${i < l ? 'got' : 'not'}">🏆</span>`).join('');
     const f = $(`tb-fortuna-${side}`);
     const prev = f._v;
@@ -50,7 +50,7 @@ export function updateTopbar(view, mySide) {
   else if (view.phase === 'deploy') tt.textContent = 'BATTLE PLANS';
   else tt.textContent = mine ? 'YOUR TURN' : `${view.names[view.turn]} commands`;
   tt.classList.toggle('mine', (mine || view.phase === 'deploy') && view.winner === null);
-  const roundsLeft = Math.max(0, Math.ceil((C.NIGHTFALL_TURN - view.turnCount + 1) / 2));
+  const roundsLeft = Math.max(0, Math.ceil((view.nightfallTurn - view.turnCount + 1) / 2));
   const night = $('tb-night');
   night.textContent = roundsLeft > 5 ? `☀ ${roundsLeft}` : `🌙 ${roundsLeft}`;
   night.title = `Nightfall in ${roundsLeft} rounds — most Laurels wins at dusk`;
@@ -230,7 +230,8 @@ export function rulesHTML() {
   return `
     <h2>HOW TO PLAY</h2>
     <p><b style="color:var(--parch)">Take an order from the War Council, execute it, and break the enemy.
-    First to ${C.LAURELS_TO_WIN} Laurels wins</b> — each enemy unit destroyed is a Laurel; their General is worth ${C.GENERAL_LAURELS}.</p>
+    First to the field's Laurel target wins</b> (5 on the standard field — the trophy row up top shows yours).
+    Each enemy unit destroyed is a Laurel; their General is worth ${C.GENERAL_LAURELS}.</p>
 
     <h3>YOUR TURN</h3>
     <ul>
@@ -252,7 +253,7 @@ export function rulesHTML() {
     A melee defender that holds its ground <b>battles back</b> at full dice.</p>
 
     <h3>FORTUNA ☘</h3>
-    <p>Earn it from Omens, from council coins, and when your units die (the gods pity the fallen; +${C.DESPERATE_FORTUNA} the first time the enemy reaches ${C.DESPERATE_AT} Laurels).
+    <p>Earn it from Omens, from council coins, and when your units die (the gods pity the fallen; +${C.DESPERATE_FORTUNA} the first time the enemy comes within a Laurel of victory).
     Spend it on your turn: <b>reroll</b> any of your dice (${C.REROLL_COSTS.join(', then ')}), a <b>War Cry</b> +1 die (${C.WARCRY_COST}), or…</p>
 
     <h3>STRATAGEMS 📜 (${C.ARM_COST} Fortuna)</h3>
@@ -267,7 +268,7 @@ export function rulesHTML() {
     </table>
 
     <h3>NIGHTFALL 🌙</h3>
-    <p>After ${C.NIGHTFALL_TURN / 2} rounds each, night ends the battle: most Laurels wins (then most surviving blocks).</p>
+    <p>The sun counter up top counts the rounds. When night falls, the side closest to its Laurel target wins (then most surviving blocks). No battle grinds forever.</p>
   `;
 }
 

@@ -8,6 +8,7 @@ import {
 } from '../public/js/engine/engine.js';
 import { C, UNIT_TYPES } from '../public/js/engine/constants.js';
 import { TILES, STRATAGEMS } from '../public/js/engine/council.js';
+import { SCENARIOS } from '../public/js/engine/scenarios.js';
 import { distance } from '../public/js/engine/hex.js';
 
 function rnd(arr, rng) {
@@ -27,7 +28,7 @@ function randomPlacements(state, side, rng) {
   const cells = Object.entries(state.board.cells)
     .filter(([k, t]) => t !== 'river')
     .map(([k]) => k.split(',').map(Number))
-    .filter(([q, r]) => inDeployZone(side, r))
+    .filter(([q, r]) => inDeployZone(state, side, r))
     .sort(() => rng() - 0.5);
   return aliveUnits(state, side).map((u, i) => ({ id: u.id, q: cells[i][0], r: cells[i][1] }));
 }
@@ -126,18 +127,18 @@ function checkInvariants(state) {
     assert.ok(state.scrolls[side].length <= C.MAX_SCROLLS, 'scroll cap');
   }
   if (state.winner === null) {
-    assert.ok(state.laurels[0] < C.LAURELS_TO_WIN && state.laurels[1] < C.LAURELS_TO_WIN, 'game should have ended');
+    assert.ok(state.laurels[0] < state.laurelTarget[0] && state.laurels[1] < state.laurelTarget[1], 'game should have ended');
     assert.equal(state.council.length + '', state.phase === 'take' ? String(C.COUNCIL_SIZE) : state.council.length + '', 'council refilled at turn start');
   }
 }
 
 test('random playouts complete legally', () => {
-  const scenarios = ['openField', 'riverCrossing', 'hillCountry', 'randomField'];
+  const scenarios = ['openField', 'riverCrossing', 'hillCountry', 'randomField', 'grandField', 'greatPlain'];
   let wins = [0, 0];
   for (let g = 0; g < 24; g++) {
     const rng = mulberry(1000 + g);
     const deployMode = g % 2 === 1; // half the games use Battle Plans
-    let state = createGame({ scenarioId: scenarios[g % 4], seed: 'test-' + g, deployMode });
+    let state = createGame({ scenarioId: scenarios[g % 6], seed: 'test-' + g, deployMode });
     let steps = 0;
     while (state.winner === null && steps < 4000) {
       let side = state.turn, action;
@@ -199,10 +200,51 @@ test('battle plans: blind deployment stays blind and validated', () => {
   assert.equal(state.phase, 'take');
   assert.equal(state.turn, 0);
   for (const u of aliveUnits(state)) {
-    assert.ok(inDeployZone(u.side, u.r), `unit ${u.id} outside its zone at reveal`);
+    assert.ok(inDeployZone(state, u.side, u.r), `unit ${u.id} outside its zone at reveal`);
   }
   assert.equal(viewFor(state, 0).units.length, state.units.length, 'reveal shows everything');
   assert.ok(viewFor(state, 0).events.some(e => e.t === 'deployReveal'));
+});
+
+test('per-side laurel targets: asymmetric scenarios resolve fairly', () => {
+  // register a test-only asymmetric scenario: side 0 needs 2 laurels, side 1 needs 5
+  SCENARIOS.testAsym = {
+    ...SCENARIOS.openField,
+    name: 'Asymmetric Fixture',
+    laurelTarget: [2, 5],
+  };
+  let state = createGame({ scenarioId: 'testAsym', seed: 'asym' });
+  assert.deepEqual(state.laurelTarget, [2, 5]);
+  assert.deepEqual(viewFor(state, 1).laurelTarget, [2, 5], 'targets visible in views');
+
+  // nightfall must compare progress toward each side's own target, not raw count:
+  // 1/2 (side 0) beats 2/5 (side 1) even though side 1 holds more laurels
+  state.laurels = [1, 2];
+  state.turnCount = C.NIGHTFALL_TURN;
+  let r = applyAction(state, 0, { t: 'take', index: 0 });
+  r = applyAction(r.state, 0, { t: 'order', unitIds: [] });
+  r = applyAction(r.state, 0, { t: 'endTurn' });
+  assert.ok(r.ok, r.error);
+  assert.equal(r.state.winReason, 'nightfall');
+  assert.equal(r.state.winner, 0, 'higher progress ratio wins at nightfall');
+
+  // and a full random playout on the asymmetric field ends coherently
+  const rng = mulberry(4242);
+  let game = createGame({ scenarioId: 'testAsym', seed: 'asym-playout' });
+  let steps = 0;
+  while (game.winner === null && steps < 4000) {
+    const res = applyAction(game, game.turn, randomAction(game, rng));
+    assert.ok(res.ok, res.error);
+    game = res.state;
+    checkInvariants(game);
+    steps++;
+  }
+  assert.ok(game.winner !== null);
+  if (game.winReason === 'laurels') {
+    assert.ok(game.laurels[game.winner] >= game.laurelTarget[game.winner], 'winner met its own target');
+    assert.ok(game.laurels[1 - game.winner] < game.laurelTarget[1 - game.winner], 'loser did not');
+  }
+  delete SCENARIOS.testAsym;
 });
 
 test('illegal actions are rejected without corrupting state', () => {

@@ -7,7 +7,7 @@
 
 import { C, UNIT_TYPES } from './constants.js';
 import { TILES, STRATAGEMS, buildBag } from './council.js';
-import { SCENARIOS, makeBoard, makeUnits, sectionOf } from './scenarios.js';
+import { getScenario, makeBoard, makeUnits, sectionOf } from './scenarios.js';
 import * as H from './hex.js';
 import { hashSeed, rollDie, shuffle } from './rng.js';
 
@@ -15,8 +15,9 @@ import { hashSeed, rollDie, shuffle } from './rng.js';
 
 export function createGame({ scenarioId = 'openField', seed = 'ad-arma', names, deployMode = false } = {}) {
   const rng = { seed: hashSeed(String(seed)), n: 0 };
+  const scenario = getScenario(scenarioId);
   const board = makeBoard(scenarioId, rng);
-  const units = makeUnits().map(u => ({
+  const units = makeUnits(scenarioId).map(u => ({
     ...u,
     blocks: UNIT_TYPES[u.type].blocks,
     maxBlocks: UNIT_TYPES[u.type].blocks,
@@ -29,7 +30,9 @@ export function createGame({ scenarioId = 'openField', seed = 'ad-arma', names, 
   const state = {
     v: 1,
     scenarioId,
-    scenarioName: (SCENARIOS[scenarioId] || SCENARIOS.openField).name,
+    scenarioName: scenario.name,
+    laurelTarget: [...scenario.laurelTarget],
+    nightfallTurn: scenario.nightfallTurn || C.NIGHTFALL_TURN,
     names: names || ['Rome', 'Carthage'],
     rng,
     board,
@@ -65,10 +68,10 @@ export function createGame({ scenarioId = 'openField', seed = 'ad-arma', names, 
   return state;
 }
 
-// Deployment zones for Battle Plans mode: each side hides its muster in the
-// three rows nearest its own edge.
-export function inDeployZone(side, r) {
-  return side === 0 ? r >= 6 : r <= 2;
+// Deployment zones for Battle Plans mode — per-scenario row bands.
+export function inDeployZone(state, side, r) {
+  const z = state.board.deployZones[side];
+  return r >= z.minRow && r <= z.maxRow;
 }
 
 // ------------------------------------------------------------------ events
@@ -305,12 +308,13 @@ function destroyUnit(state, unit, killerSide) {
   });
   gainFortuna(state, unit.side, C.DEATH_FORTUNA, 'pity');
   const loser = 1 - killerSide;
-  if (state.laurels[killerSide] >= C.DESPERATE_AT && !state.desperateGiven[loser]) {
+  const target = state.laurelTarget[killerSide];
+  if (state.laurels[killerSide] >= target - C.DESPERATE_BEFORE_WIN && !state.desperateGiven[loser]) {
     state.desperateGiven[loser] = true;
     gainFortuna(state, loser, C.DESPERATE_FORTUNA, 'desperate');
     evt(state, { t: 'desperate', side: loser });
   }
-  if (state.laurels[killerSide] >= C.LAURELS_TO_WIN) {
+  if (state.laurels[killerSide] >= target) {
     endGame(state, killerSide, 'laurels');
     return;
   }
@@ -423,7 +427,7 @@ function applyDice(state, att, tgt, dice, { melee, evade, canBattleBack }) {
 function springHoldTheLine(state, tgt) {
   const side = tgt.side;
   const idx = state.scrolls[side].findIndex(s =>
-    s.effect === 'holdTheLine' && s.secret && s.secret.section === sectionOf(tgt.q, tgt.r));
+    s.effect === 'holdTheLine' && s.secret && s.secret.section === sectionOf(state.board, tgt.q, tgt.r));
   if (idx === -1) return false;
   const scroll = state.scrolls[side].splice(idx, 1)[0];
   state.sprung[side].push(scroll);
@@ -443,7 +447,7 @@ function springMoveTraps(state, mover) {
       striker = H.neighbors(mover.q, mover.r)
         .map(n => unitAt(state, n.q, n.r))
         .filter(u => u && u.side === enemy && u.type !== 'general'
-          && sectionOf(u.q, u.r) === s.secret.section)
+          && sectionOf(state.board, u.q, u.r) === s.secret.section)
         .sort((a, b) => b.blocks - a.blocks || (a.id < b.id ? -1 : 1))[0] || null;
     } else if (s.effect === 'countercharge') {
       striker = H.neighbors(mover.q, mover.r)
@@ -602,7 +606,7 @@ function doDeploy(s, side, a) {
     if (hexes.has(k)) return 'hex used twice';
     hexes.add(k);
     if (!passable(s, p.q, p.r)) return 'impassable hex';
-    if (!inDeployZone(side, p.r)) return 'outside your deployment zone';
+    if (!inDeployZone(s, side, p.r)) return 'outside your deployment zone';
   }
   s.pendingDeploy[side] = placements;
   s.deployed[side] = true;
@@ -722,7 +726,7 @@ function doAttack(s, side, a) {
   // Feigned Retreat: the strike is wasted before dice are rolled.
   if (melee) {
     const idx = s.scrolls[tgt.side].findIndex(x =>
-      x.effect === 'feignedRetreat' && x.secret && x.secret.section === sectionOf(tgt.q, tgt.r));
+      x.effect === 'feignedRetreat' && x.secret && x.secret.section === sectionOf(s.board, tgt.q, tgt.r));
     if (idx !== -1) {
       const scroll = s.scrolls[tgt.side].splice(idx, 1)[0];
       s.sprung[tgt.side].push(scroll);
@@ -854,10 +858,12 @@ function doEndTurn(s, side, a) {
   evt(s, { t: 'turnEnd', side, added, council: s.council.map(c => ({ ...c })) });
   s.turn = 1 - side;
   s.turnCount++;
-  if (s.turnCount > C.NIGHTFALL_TURN) {
+  if (s.turnCount > s.nightfallTurn) {
     const blocksOf = sd => aliveUnits(s, sd).reduce((sum, u) => sum + u.blocks, 0);
+    // progress toward each side's own target — fair under asymmetric scenarios
+    const prog = sd => s.laurels[sd] / s.laurelTarget[sd];
     let w;
-    if (s.laurels[0] !== s.laurels[1]) w = s.laurels[0] > s.laurels[1] ? 0 : 1;
+    if (prog(0) !== prog(1)) w = prog(0) > prog(1) ? 0 : 1;
     else if (blocksOf(0) !== blocksOf(1)) w = blocksOf(0) > blocksOf(1) ? 0 : 1;
     else w = -1; // a bloody, pointless draw
     endGame(s, w, 'nightfall');
