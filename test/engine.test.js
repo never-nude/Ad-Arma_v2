@@ -247,6 +247,80 @@ test('per-side laurel targets: asymmetric scenarios resolve fairly', () => {
   delete SCENARIOS.testAsym;
 });
 
+test('restart turn: rewinds freely until something irreversible happens', () => {
+  let state = createGame({ seed: 'restart' });
+  const before = {
+    council: state.council.map(c => c.tile),
+    positions: state.units.map(u => [u.q, u.r]),
+    fortuna: [...state.fortuna],
+  };
+
+  // take a tile, order units, move one — then rethink everything
+  let r = applyAction(state, 0, { t: 'take', index: 1 });
+  assert.equal(viewFor(r.state, 0).restartable, true, 'restartable after take');
+  const { units } = orderableUnits(r.state, r.state.turnCtx.tileId, false);
+  const mover = units.find(u => u.type === 'cavalry') || units[0];
+  r = applyAction(r.state, 0, { t: 'order', unitIds: [mover.id] });
+  const reach = reachable(r.state, unitById(r.state, mover.id), 3);
+  const destKey = Object.keys(reach.dist)[0];
+  const [q, rr] = destKey.split(',').map(Number);
+  r = applyAction(r.state, 0, { t: 'move', unitId: mover.id, to: { q, r: rr } });
+  assert.ok(r.ok, r.error);
+  assert.equal(viewFor(r.state, 0).restartable, true, 'a plain move is reversible');
+
+  r = applyAction(r.state, 0, { t: 'restartTurn' });
+  assert.ok(r.ok, r.error);
+  assert.equal(r.state.phase, 'take');
+  assert.deepEqual(r.state.council.map(c => c.tile), before.council, 'tile returned to the council');
+  assert.deepEqual(r.state.units.map(u => [u.q, u.r]), before.positions, 'units back home');
+  assert.deepEqual(r.state.fortuna, before.fortuna, 'coins refunded');
+  assert.ok(r.state.events.some(e => e.t === 'turnRestarted'), 'public restart event');
+  assert.equal(r.state.seq > 0, true, 'event log continues, never rewinds');
+  state = r.state;
+
+  // restart is repeatable, and rejected in the take phase (nothing taken yet)
+  assert.equal(applyAction(state, 0, { t: 'restartTurn' }).ok, false, 'nothing to restart before a tile is taken');
+  r = applyAction(state, 0, { t: 'take', index: 0 });
+  r = applyAction(r.state, 0, { t: 'restartTurn' });
+  assert.ok(r.ok, 'restart works straight after taking a tile');
+  r = applyAction(r.state, 0, { t: 'take', index: 0 });
+  r = applyAction(r.state, 0, { t: 'order', unitIds: [] });
+  r = applyAction(r.state, 0, { t: 'restartTurn' });
+  assert.ok(r.ok, 'restart works repeatedly');
+  state = r.state;
+
+  // sealing a scroll makes the turn irreversible
+  state.fortuna[0] = 10;
+  r = applyAction(state, 0, { t: 'take', index: 0 });
+  r = applyAction(r.state, 0, { t: 'order', unitIds: [] });
+  r = applyAction(r.state, 0, { t: 'arm', effect: 'countercharge' });
+  assert.ok(r.ok, r.error);
+  assert.equal(viewFor(r.state, 0).restartable, false, 'sealed scroll blocks restart');
+  assert.equal(applyAction(r.state, 0, { t: 'restartTurn' }).ok, false);
+
+  // any dice roll makes the turn irreversible: engineer a melee
+  let s2 = createGame({ seed: 'restart-2' });
+  const att = s2.units.find(u => u.side === 0 && u.type === 'infantry');
+  const tgt = s2.units.find(u => u.side === 1 && u.type === 'infantry');
+  att.q = tgt.q; att.r = tgt.r + 1;
+  let r2 = applyAction(s2, 0, { t: 'take', index: 0, valve: true });
+  r2 = applyAction(r2.state, 0, { t: 'order', unitIds: [att.id] });
+  r2 = applyAction(r2.state, 0, { t: 'endPhase' });
+  r2 = applyAction(r2.state, 0, { t: 'attack', unitId: att.id, targetId: tgt.id });
+  assert.ok(r2.ok, r2.error);
+  r2 = applyAction(r2.state, 0, { t: 'resolve' });
+  assert.ok(r2.ok, r2.error);
+  if (r2.state.phase === 'pursuit') r2 = applyAction(r2.state, 0, { t: 'declinePursuit' });
+  if (r2.state.winner === null) {
+    assert.equal(viewFor(r2.state, 0).restartable, false, 'dice block restart');
+    assert.equal(applyAction(r2.state, 0, { t: 'restartTurn' }).ok, false);
+  }
+
+  // the checkpoint must never reach a client
+  const v = viewFor(r2.state, 0);
+  assert.equal(v.checkpoint, undefined, 'checkpoint stays on the server');
+});
+
 test('illegal actions are rejected without corrupting state', () => {
   const state = createGame({ seed: 'illegal' });
   const cases = [

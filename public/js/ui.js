@@ -238,6 +238,7 @@ export function rulesHTML() {
       <li><b>Take a tile</b> from the Council row (pocket any coins on it as Fortuna). Every order you take is denied to your enemy — and tiles nobody takes grow richer each turn.</li>
       <li><b>Move</b> the units it names, then each may <b>fight once</b>.</li>
       <li>Any tile may instead be taken as a <em>plain order</em>: order 1 unit anywhere, no bonuses.</li>
+      <li><b>↺ Restart turn</b>: rethink freely — until dice are rolled, a trap springs, or you seal a scroll. Then there is no going back.</li>
     </ul>
 
     <h3>THE DICE</h3>

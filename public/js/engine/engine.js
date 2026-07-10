@@ -141,6 +141,41 @@ function spendFortuna(state, side, amount, reason) {
   evt(state, { t: 'fortuna', side, delta: -amount, reason, total: state.fortuna[side] });
 }
 
+// ------------------------------------------------------------ restart turn
+
+// Snapshot of everything except the event log (and the checkpoint itself),
+// taken the moment a council tile is picked up.
+function makeCheckpoint(s) {
+  const { events, seq, checkpoint, ...rest } = s;
+  return structuredClone(rest);
+}
+
+// A turn can be rethought until something irreversible happens: dice consumed
+// (any attack, ambush or battle-back), a stratagem sprung (its secret is out),
+// or a scroll sealed this turn.
+export function isRestartable(state, side) {
+  const cp = state.checkpoint;
+  return state.winner === null && state.turn === side && !!cp
+    && ['order', 'move', 'battle'].includes(state.phase)
+    && state.rng.n === cp.rng.n
+    && state.sprung[0].length === cp.sprung[0].length
+    && state.sprung[1].length === cp.sprung[1].length
+    && !(state.turnCtx && state.turnCtx.armedThisTurn > 0);
+}
+
+function doRestart(s, side) {
+  if (!s.checkpoint || !['order', 'move', 'battle'].includes(s.phase)) return 'nothing to restart';
+  if (!isRestartable(s, side)) return 'the dice have spoken — there is no going back';
+  const { events, seq, checkpoint } = s;
+  const restored = structuredClone(checkpoint);
+  for (const k of Object.keys(restored)) s[k] = restored[k];
+  s.events = events;
+  s.seq = seq;
+  s.checkpoint = checkpoint; // still valid: we are back at the same moment
+  evt(s, { t: 'turnRestarted', side });
+  return null;
+}
+
 // The gods discount their prices for a side trailing badly — the structural
 // comeback lever (Fortuna income alone measured as a no-op in playtests).
 export function costFor(state, side, base) {
@@ -585,6 +620,7 @@ function run(s, side, a) {
     case 'pursue': return doPursue(s, side, a, true);
     case 'declinePursuit': return doPursue(s, side, a, false);
     case 'arm': return doArm(s, side, a);
+    case 'restartTurn': return doRestart(s, side);
     case 'endTurn': return doEndTurn(s, side, a);
     default: return 'unknown action';
   }
@@ -640,6 +676,7 @@ function doTake(s, side, a) {
   if (s.phase !== 'take') return 'wrong phase';
   const i = a.index | 0;
   if (i < 0 || i >= s.council.length) return 'bad tile';
+  s.checkpoint = makeCheckpoint(s); // the moment a rethink rewinds to
   const slot = s.council.splice(i, 1)[0];
   s.discard.push(slot.tile);
   if (slot.coins > 0) gainFortuna(s, side, slot.coins, 'coins');
@@ -901,6 +938,9 @@ export function viewFor(state, side) {
     bag: undefined,
     bagCount: state.bag.length,
     discard: undefined,
+    // the checkpoint holds both sides' secrets — it never leaves the server
+    checkpoint: undefined,
+    restartable: isRestartable(state, side),
     // during blind deployment the enemy's muster is invisible, positions and all
     units: deploying ? state.units.filter(u => u.side === side) : state.units,
     pendingDeploy: state.pendingDeploy.map((p, i) => (i === side ? p : null)),

@@ -476,6 +476,14 @@ async function animateEvents(events) {
         await wait(1200);
         break;
       }
+      case 'turnRestarted': {
+        sfx.push();
+        ui.log(`${sideName(e.side)} <span class="gold">rethinks the turn</span> — the pieces slide back.`, 'l' + e.side);
+        if (e.side === app.mySide) toast('Turn restarted — pick again.');
+        // the batch-final setView/snapAll below teleports everything home
+        await wait(350);
+        break;
+      }
       case 'turnEnd':
         break;
       case 'turnStart': {
@@ -653,6 +661,9 @@ function refreshContext() {
   const armCost = costFor(v, app.mySide, C.ARM_COST);
   const armBtn = { label: `📜 Arm (${armCost}☘)`, cb: openArmPicker,
     disabled: v.fortuna[app.mySide] < armCost || v.scrolls[app.mySide].length >= C.MAX_SCROLLS || (ctx && ctx.armedThisTurn >= C.ARMS_PER_TURN) };
+  const restartBtn = { label: '↺ Restart turn', cls: 'btn-ghost',
+    disabled: !v.restartable,
+    cb: () => sendAction({ t: 'restartTurn' }) };
 
   switch (v.phase) {
     case 'take':
@@ -673,6 +684,7 @@ function refreshContext() {
       ui.setContext(txt, [
         { label: picked.length ? `Order ${picked.length} unit${picked.length > 1 ? 's' : ''}` : 'Order none', cls: 'btn-gold', cb: () => sendAction({ t: 'order', unitIds: picked, heal: app.sel.heal }) },
         armBtn,
+        restartBtn,
       ]);
       break;
     }
@@ -686,6 +698,7 @@ function refreshContext() {
         [
           { label: '⚔ To battle', cls: 'btn-gold', cb: () => sendAction({ t: 'endPhase' }) },
           armBtn,
+          restartBtn,
           { label: 'End turn', cls: 'btn-ghost', cb: () => sendAction({ t: 'endTurn' }) },
         ]);
       break;
@@ -705,6 +718,7 @@ function refreshContext() {
             cb: () => { app.sel.warcry = !app.sel.warcry; sfx.click(); refreshContext(); },
           },
           armBtn,
+          restartBtn,
           { label: 'End turn', cls: 'btn-gold', cb: () => sendAction({ t: 'endTurn' }) },
         ]);
       break;
