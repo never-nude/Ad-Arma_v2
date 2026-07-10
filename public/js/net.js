@@ -1,6 +1,13 @@
 // WebSocket client for private rooms. Auto-reconnects with the player key so
 // a refresh (or a dropped connection) resumes the same seat.
 
+// Static mirrors (e.g. ad-arma.com/v2 on GitHub Pages) have no server of
+// their own — they talk to the Worker cross-origin. Anything served by the
+// Worker itself (workers.dev, wrangler dev) stays same-origin.
+const SELF_HOSTED = location.hostname.endsWith('workers.dev')
+  || location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+const API_BASE = SELF_HOSTED ? '' : 'https://ad-arma-v2.michael-kushman.workers.dev';
+
 export class RoomConnection {
   constructor(code, name) {
     this.code = code.toUpperCase();
@@ -17,8 +24,10 @@ export class RoomConnection {
   _emit(type, data) { if (this.handlers[type]) this.handlers[type](data); }
 
   connect() {
-    const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-    const url = `${proto}://${location.host}/api/room/${this.code}/ws` +
+    const base = API_BASE
+      ? API_BASE.replace(/^https/, 'wss')
+      : `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}`;
+    const url = `${base}/api/room/${this.code}/ws` +
       `?key=${encodeURIComponent(this.key)}&name=${encodeURIComponent(this.name || 'Commander')}`;
     this.ws = new WebSocket(url);
     this.ws.onopen = () => {
@@ -65,7 +74,7 @@ export class RoomConnection {
 }
 
 export async function createRoom(scenarioId, deployMode) {
-  const res = await fetch('/api/room', {
+  const res = await fetch(API_BASE + '/api/room', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ scenarioId, deployMode: !!deployMode }),

@@ -15,9 +15,32 @@ function makeCode() {
   return [...bytes].map(b => CODE_ALPHABET[b % CODE_ALPHABET.length]).join('');
 }
 
+// Static mirrors of the client (ad-arma.com/v2 on GitHub Pages) call the API
+// cross-origin. WebSockets need no CORS; room creation does.
+const ALLOWED_ORIGINS = new Set([
+  'https://ad-arma.com',
+  'https://www.ad-arma.com',
+]);
+
+function corsHeaders(request) {
+  const origin = request.headers.get('Origin');
+  if (!origin || !ALLOWED_ORIGINS.has(origin)) return {};
+  return {
+    'Access-Control-Allow-Origin': origin,
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'content-type',
+    'Access-Control-Max-Age': '86400',
+    'Vary': 'Origin',
+  };
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
+
+    if (url.pathname === '/api/room' && request.method === 'OPTIONS') {
+      return new Response(null, { status: 204, headers: corsHeaders(request) });
+    }
 
     if (url.pathname === '/api/room' && request.method === 'POST') {
       const body = await request.json().catch(() => ({}));
@@ -25,9 +48,9 @@ export default {
         const code = makeCode();
         const stub = env.ROOMS.getByName(code);
         const claimed = await stub.init(body.scenarioId, body.deployMode);
-        if (claimed) return Response.json({ code });
+        if (claimed) return Response.json({ code }, { headers: corsHeaders(request) });
       }
-      return new Response('no rooms available', { status: 503 });
+      return new Response('no rooms available', { status: 503, headers: corsHeaders(request) });
     }
 
     const m = url.pathname.match(/^\/api\/room\/([A-Za-z]{4})\/ws$/);
