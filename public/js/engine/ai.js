@@ -10,7 +10,7 @@ import { C, UNIT_TYPES } from './constants.js';
 import { TILES, STRATAGEMS } from './council.js';
 import {
   aliveUnits, unitById, unitAt, terrainAt, reachable, attackTargets,
-  orderableUnits, attackOdds, diceFor, inDeployZone,
+  orderableUnits, attackOdds, diceFor, inDeployZone, costFor,
 } from './engine.js';
 import { sectionOf, colOf } from './scenarios.js';
 import * as H from './hex.js';
@@ -324,7 +324,7 @@ function pickBattle(view, side, difficulty) {
   }
   if (best && best.ev > 0.35) {
     const action = { t: 'attack', unitId: best.f.id, targetId: best.tgt.id };
-    if (difficulty !== 'legate' && view.fortuna[side] >= C.WARCRY_COST + 2) {
+    if (difficulty !== 'legate' && view.fortuna[side] >= costFor(view, side, C.WARCRY_COST) + 2) {
       const plain = attackOdds(view, best.f.id, best.tgt.id, {});
       const loud = attackOdds(view, best.f.id, best.tgt.id, { warcry: true });
       if (plain && loud && (loud.pKill - plain.pKill) * KILL_VALUE[best.tgt.type] > 1.1) {
@@ -343,8 +343,9 @@ function maybeArm(view, side, difficulty) {
   if (!view.turnCtx || view.turnCtx.armedThisTurn >= C.ARMS_PER_TURN) return null;
   if (view.scrolls[side].length >= C.MAX_SCROLLS) return null;
   const reserve = difficulty === 'imperator' ? 1 : 3;
-  if (view.fortuna[side] < C.ARM_COST + reserve) return null;
-  if (Math.random() < (difficulty === 'imperator' ? 0.75 : 0.4)) return null;
+  if (view.fortuna[side] < costFor(view, side, C.ARM_COST) + reserve) return null;
+  // the sharper the commander, the more often it lays traps
+  if (Math.random() < (difficulty === 'imperator' ? 0.25 : 0.4)) return null;
 
   const have = new Set(view.scrolls[side].map(s => s.effect));
   const mine = aliveUnits(view, side);
@@ -409,15 +410,16 @@ function bestSection(view, side) {
 function pickCombat(view, side, difficulty) {
   const p = view.pending;
   if (!p || difficulty === 'legate' || p.rerolls >= C.REROLL_COSTS.length) return { t: 'resolve' };
-  const cost = C.REROLL_COSTS[p.rerolls];
+  const cost = costFor(view, side, C.REROLL_COSTS[p.rerolls]);
   if (view.fortuna[side] < cost) return { t: 'resolve' };
   const tgt = unitById(view, p.targetId);
   if (!tgt) return { t: 'resolve' };
   const hitMin = tgt.type === 'general' ? C.GENERAL_HIT_MIN : C.HIT_MIN;
   const hits = p.dice.filter(d => d >= hitMin).length;
+  // keep pushes AND omens — omens pay out only if they survive to resolution
   const rerollable = p.dice
     .map((d, i) => ({ d, i }))
-    .filter(x => x.d < hitMin && x.d !== C.PUSH_FACE); // keep pushes; 1s already paid
+    .filter(x => x.d < hitMin && x.d !== C.PUSH_FACE && x.d !== C.OMEN_FACE);
   if (!rerollable.length) return { t: 'resolve' };
   const need = tgt.blocks - hits;
   const pHit = (7 - hitMin) / 6;

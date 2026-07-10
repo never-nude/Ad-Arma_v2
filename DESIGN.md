@@ -12,7 +12,7 @@
 
 ## The 60-second rules speech
 
-> On your turn: **take one order tile from the War Council row** — pocket any coins sitting on it — and execute it: move the units it names, then each may fight once. A unit rolls **dice equal to its remaining soldiers**: **5-6 hits, 4 pushes them back** — and a soldier who can't retreat bleeds instead — **1 is an Omen: the gods pay YOU a Fortuna**. Spend Fortuna to reroll (1, then 2, then 3), to add a die (War Cry, 2), or to **arm a secret stratagem** (3) the game will spring on me automatically. Orders nobody takes gain a coin each turn. First to **5 Laurels** wins — each unit destroyed is a Laurel, my General is two.
+> On your turn: **take one order tile from the War Council row** — pocket any coins sitting on it — and execute it: move the units it names, then each may fight once. A unit rolls **dice equal to its remaining soldiers**: **5-6 hits, 4 pushes them back** — and a soldier who can't retreat bleeds instead — **1 is an Omen: the gods pay YOU a Fortuna**. Spend Fortuna to reroll (1, then 2, then 3), to add a die (War Cry, 2), or to **arm a secret stratagem** (3) the game will spring on me automatically. Orders nobody takes gain a coin each turn. First to the field's **Laurel target** wins (5 on the standard field) — each unit destroyed is a Laurel, my General is two.
 
 Depth is opt-in: a first-timer can ignore stratagems and Fortuna entirely, just take tiles and fight, and still play a competent game.
 
@@ -98,20 +98,21 @@ Sections (Left / Center / Right board thirds) exist *only* as trap-targeting zon
 
 ## Fortuna (public track, start 2, cap 12)
 
-- **Earn:** +1 per Omen (1) you roll · +1 when one of *your* units dies ("the gods pity the fallen") · +2 the first time your opponent reaches 4 Laurels (**Desperate Hour**) · coins from passed-over council tiles · +2 from Auspices.
+- **Earn:** +1 per Omen (1) you roll · +1 when one of *your* units dies ("the gods pity the fallen") · **Desperate Hour:** +2 every time the leader takes a Laurel while 2+ ahead or within one of victory · coins from passed-over council tiles · +2 from Auspices.
 - **Spend (your turn only):** rerolls at 1/2/3 per battle · War Cry +1 die (2) · arm a stratagem (3).
+- **The gods love an underdog:** while you trail by 2+ Laurels, every Fortuna price is discounted by 1 (minimum 1).
 
 This is the luck-to-skill valve *and* the comeback engine: cold dice and lost units literally fund your counterpunch. The best strategist doesn't always win a game — but wins the rematch series.
 
 ## Victory
 
-First to **5 Laurels**. Destroyed unit = 1; enemy General = 2.
+First to the scenario's **Laurel target** (5 on the standard 13×9 fields; 7 on Grand Field; 9 on Great Plain). Destroyed unit = 1; enemy General = 2.
 
 **Nightfall:** after 30 rounds each, darkness ends the battle — most Laurels wins (tiebreak: most surviving blocks; then a draw). No battle grinds forever, and a trailing player must force the issue before dusk.
 
 ## Board & scenarios
 
-13 × 9 hex board (pointy-top). Scenarios: **The River Crossing** (two fords), **Hill Country** (central ridge, wooded flanks), **Open Field**, **Random Field** (seeded, mirrored, fair).
+13 × 9 hex board (pointy-top). Scenarios: **The River Crossing** (three fords), **Hill Country** (central ridge, wooded flanks), **Open Field**, **Random Field** (seeded, mirrored, fair).
 
 ## Modes
 

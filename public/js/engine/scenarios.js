@@ -85,7 +85,7 @@ function zones(dims, depth = 3) {
 export const SCENARIOS = {
   riverCrossing: {
     name: 'The River Crossing',
-    blurb: 'A cold river splits the field. Two fords. Whoever holds them holds the battle.',
+    blurb: 'A cold river splits the field. Three fords. Whoever holds them holds the battle.',
     dims: DIMS_13,
     laurelTarget: [5, 5],
     deployZones: zones(DIMS_13),
@@ -94,6 +94,7 @@ export const SCENARIOS = {
       const cells = baseCells(dims);
       for (let col = 0; col < dims.cols; col++) set(cells, col, 4, 'river');
       set(cells, 3, 4, 'ford');
+      set(cells, 6, 4, 'ford');
       set(cells, 9, 4, 'ford');
       set(cells, 1, 2, 'forest'); set(cells, 11, 2, 'forest');
       set(cells, 1, 6, 'forest'); set(cells, 11, 6, 'forest');

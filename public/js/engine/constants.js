@@ -21,7 +21,9 @@ export const C = {
   OMEN_FORTUNA: 1,           // rolling a 1 pays the roller
   DEATH_FORTUNA: 1,          // the gods pity the fallen
   DESPERATE_BEFORE_WIN: 1,   // Desperate Hour: enemy within this many laurels of their target...
-  DESPERATE_FORTUNA: 2,      // ...pays you this
+  DESPERATE_FORTUNA: 2,      // ...pays you this — repeats on every laurel they take while it holds
+  COMEBACK_GAP: 2,           // trailing by this many laurels...
+  COMEBACK_DISCOUNT: 1,      // ...discounts every Fortuna price by this (min 1)
   AUSPICES_FORTUNA: 2,
 
   // d6 outcomes

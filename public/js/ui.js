@@ -253,7 +253,9 @@ export function rulesHTML() {
     A melee defender that holds its ground <b>battles back</b> at full dice.</p>
 
     <h3>FORTUNA ☘</h3>
-    <p>Earn it from Omens, from council coins, and when your units die (the gods pity the fallen; +${C.DESPERATE_FORTUNA} the first time the enemy comes within a Laurel of victory).
+    <p>Earn it from Omens, from council coins, and when your units die (the gods pity the fallen).
+    <b>The Desperate Hour:</b> every Laurel the enemy takes while ${C.COMEBACK_GAP}+ ahead — or within one of victory — pays you +${C.DESPERATE_FORTUNA};
+    and while you trail by ${C.COMEBACK_GAP}+ Laurels, <b>every Fortuna price is discounted by ${C.COMEBACK_DISCOUNT}</b>. The gods love an underdog.
     Spend it on your turn: <b>reroll</b> any of your dice (${C.REROLL_COSTS.join(', then ')}), a <b>War Cry</b> +1 die (${C.WARCRY_COST}), or…</p>
 
     <h3>STRATAGEMS 📜 (${C.ARM_COST} Fortuna)</h3>

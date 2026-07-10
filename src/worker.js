@@ -96,6 +96,11 @@ export class GameRoom extends DurableObject {
       await this.ctx.storage.put('players', players);
     }
 
+    // a fresh connection for this seat supersedes any zombie sockets
+    for (const old of this.ctx.getWebSockets('seat' + player.seat)) {
+      try { old.close(4002, 'superseded by a new connection'); } catch { /* already gone */ }
+    }
+
     const pair = new WebSocketPair();
     this.ctx.acceptWebSocket(pair[1], ['seat' + player.seat]);
     pair[1].serializeAttachment({ seat: player.seat, key });
@@ -125,7 +130,14 @@ export class GameRoom extends DurableObject {
     let state = await this.ctx.storage.get('state');
     if (!state) { this._send(ws, { t: 'error', msg: 'The battle has not begun.' }); return; }
 
-    const res = applyAction(state, att.seat, msg.action);
+    let res;
+    try {
+      res = applyAction(state, att.seat, msg.action);
+    } catch (e) {
+      // untrusted input must never take the room down
+      this._send(ws, { t: 'error', msg: 'invalid action' });
+      return;
+    }
     if (!res.ok) { this._send(ws, { t: 'error', msg: res.error }); return; }
     state = res.state;
     await this.ctx.storage.put('state', state);
@@ -144,12 +156,12 @@ export class GameRoom extends DurableObject {
 
   async webSocketClose(ws) {
     const players = (await this.ctx.storage.get('players')) || [];
-    await this._broadcastPlayers(players);
+    await this._broadcastPlayers(players, ws);
   }
 
   async webSocketError(ws) {
     const players = (await this.ctx.storage.get('players')) || [];
-    await this._broadcastPlayers(players);
+    await this._broadcastPlayers(players, ws);
   }
 
   // idle for a full TTL — dissolve the room
@@ -176,17 +188,20 @@ export class GameRoom extends DurableObject {
     }
   }
 
-  _roster(players) {
+  // `closing` — a socket mid-close that must not count as connected (during
+  // webSocketClose the runtime may still list it).
+  _roster(players, closing = null) {
     return players.map(p => ({
       seat: p.seat,
       name: p.name,
-      connected: this.ctx.getWebSockets('seat' + p.seat).length > 0,
+      connected: this.ctx.getWebSockets('seat' + p.seat).some(s => s !== closing),
     }));
   }
 
-  async _broadcastPlayers(players) {
-    const roster = this._roster(players);
+  async _broadcastPlayers(players, closing = null) {
+    const roster = this._roster(players, closing);
     for (const sock of this.ctx.getWebSockets()) {
+      if (sock === closing) continue;
       this._send(sock, { t: 'players', players: roster });
     }
   }

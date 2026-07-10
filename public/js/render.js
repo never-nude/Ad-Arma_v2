@@ -123,12 +123,18 @@ export class BoardRenderer {
       const pts = [from ? { ...from } : this._px(path[0].q, path[0].r),
         ...path.map(h => this._px(h.q, h.r))];
       if (pts.length < 2) return res();
-      this.anims.push({
-        unitId, pts,
-        dur: msPerHex * (pts.length - 1),
-        start: performance.now(),
-        done: res,
-      });
+      let settled = false;
+      const done = () => {
+        if (settled) return;
+        settled = true;
+        this.pos.set(unitId, { ...pts[pts.length - 1] });
+        res();
+      };
+      const dur = msPerHex * (pts.length - 1);
+      this.anims.push({ unitId, pts, dur, start: performance.now(), done });
+      // rAF stalls in background tabs — never let a hidden pane wedge the
+      // game's event queue
+      setTimeout(done, dur + 1000);
     });
   }
 

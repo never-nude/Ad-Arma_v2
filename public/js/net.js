@@ -21,18 +21,29 @@ export class RoomConnection {
     const url = `${proto}://${location.host}/api/room/${this.code}/ws` +
       `?key=${encodeURIComponent(this.key)}&name=${encodeURIComponent(this.name || 'Commander')}`;
     this.ws = new WebSocket(url);
-    this.ws.onopen = () => { this.retries = 0; this._emit('open'); };
+    this.ws.onopen = () => {
+      this.retries = 0;
+      // keepalive so half-open connections are detected and reaped
+      clearInterval(this._ping);
+      this._ping = setInterval(() => this.send({ t: 'ping' }), 25000);
+      this._emit('open');
+    };
     this.ws.onmessage = e => {
       let msg;
       try { msg = JSON.parse(e.data); } catch { return; }
       this._emit(msg.t, msg);
     };
     this.ws.onclose = e => {
+      clearInterval(this._ping);
       this._emit('close', e);
-      if (!this.closed && e.code !== 4000 && e.code !== 4001 && this.retries < 8) {
+      // 4000 rejected, 4001 room expired, 4002 superseded by another tab — don't fight it
+      if (this.closed || [4000, 4001, 4002].includes(e.code)) return;
+      if (this.retries < 40) {
         this.retries++;
         setTimeout(() => this.connect(), Math.min(500 * 2 ** this.retries, 8000));
         this._emit('reconnecting', this.retries);
+      } else {
+        this._emit('dead');
       }
     };
     this.ws.onerror = () => {};

@@ -44,7 +44,6 @@ export function createGame({ scenarioId = 'openField', seed = 'ad-arma', names, 
     sprung: [[], []],
     fortuna: [C.FORTUNA_START, C.FORTUNA_START + C.SECOND_PLAYER_FORTUNA],
     laurels: [0, 0],
-    desperateGiven: [false, false],
     turn: 0,
     turnCount: 1,
     phase: 'take',
@@ -140,6 +139,14 @@ function gainFortuna(state, side, amount, reason) {
 function spendFortuna(state, side, amount, reason) {
   state.fortuna[side] -= amount;
   evt(state, { t: 'fortuna', side, delta: -amount, reason, total: state.fortuna[side] });
+}
+
+// The gods discount their prices for a side trailing badly — the structural
+// comeback lever (Fortuna income alone measured as a no-op in playtests).
+export function costFor(state, side, base) {
+  const behind = state.laurels[1 - side] - state.laurels[side];
+  if (behind >= C.COMEBACK_GAP) return Math.max(1, base - C.COMEBACK_DISCOUNT);
+  return base;
 }
 
 // --------------------------------------------------------------- movement
@@ -263,11 +270,11 @@ function tileBonusFor(state, att, melee) {
 export function diceFor(state, att, tgt, { melee, extra = 0 }) {
   let n = att.blocks + extra;
   n += tileBonusFor(state, att, melee);
-  if (melee && flanked(state, tgt, att.side)) n += C.FLANK_BONUS;
+  if (flanked(state, tgt, att.side)) n += C.FLANK_BONUS;
   if (adjacentFriends(state, att).some(u => u.type === 'general')) n += C.AURA_BONUS;
   const tAtt = terrainAt(state, att.q, att.r);
   const tTgt = terrainAt(state, tgt.q, tgt.r);
-  if (!melee && tAtt === 'hill' && tTgt !== 'hill') n += C.HILL_RANGED_BONUS;
+  if (!melee && tAtt === 'hill') n += C.HILL_RANGED_BONUS;
   if (melee && tTgt === 'hill' && tAtt !== 'hill') n -= C.UPHILL_PENALTY;
   if (tAtt === 'forest' || tTgt === 'forest') n = Math.min(n, C.FOREST_MAX_DICE);
   if (tAtt === 'ford') n = Math.min(n, C.FORD_MAX_DICE);
@@ -291,13 +298,13 @@ function countDice(dice, targetType) {
   return { hits, pushes, omens };
 }
 
-function damageUnit(state, unit, amount, bySide, reason) {
+function damageUnit(state, unit, amount, bySide, reason, killerUnit = null) {
   unit.blocks -= amount;
   evt(state, { t: 'damage', unitId: unit.id, amount, reason, blocks: Math.max(0, unit.blocks) });
-  if (unit.blocks <= 0) destroyUnit(state, unit, bySide);
+  if (unit.blocks <= 0) destroyUnit(state, unit, bySide, killerUnit);
 }
 
-function destroyUnit(state, unit, killerSide) {
+function destroyUnit(state, unit, killerSide, killerUnit = null) {
   unit.blocks = 0;
   unit.dead = true;
   const laurels = unit.type === 'general' ? C.GENERAL_LAURELS : 1;
@@ -309,8 +316,11 @@ function destroyUnit(state, unit, killerSide) {
   gainFortuna(state, unit.side, C.DEATH_FORTUNA, 'pity');
   const loser = 1 - killerSide;
   const target = state.laurelTarget[killerSide];
-  if (state.laurels[killerSide] >= target - C.DESPERATE_BEFORE_WIN && !state.desperateGiven[loser]) {
-    state.desperateGiven[loser] = true;
+  // The Desperate Hour repeats: every laurel the leader takes while far ahead
+  // (or near victory) arms the trailing side.
+  const gap = state.laurels[killerSide] - state.laurels[loser];
+  if (state.laurels[killerSide] < target
+    && (gap >= C.COMEBACK_GAP || state.laurels[killerSide] >= target - C.DESPERATE_BEFORE_WIN)) {
     gainFortuna(state, loser, C.DESPERATE_FORTUNA, 'desperate');
     evt(state, { t: 'desperate', side: loser });
   }
@@ -318,7 +328,7 @@ function destroyUnit(state, unit, killerSide) {
     endGame(state, killerSide, 'laurels');
     return;
   }
-  springRally(state, unit, killerSide);
+  springRally(state, unit, killerUnit);
 }
 
 function endGame(state, winner, reason) {
@@ -332,9 +342,10 @@ function endGame(state, winner, reason) {
   });
 }
 
-// Rally the Standards: when one of `unit.side`'s units dies, up to 2 adjacent
-// comrades immediately strike (the killer first if possible).
-function springRally(state, fallen, killerSide) {
+// Rally the Standards: when one of the fallen unit's side dies, up to 2
+// adjacent comrades immediately strike — the actual killer first if they
+// can reach it.
+function springRally(state, fallen, killerUnit) {
   const side = fallen.side;
   const idx = state.scrolls[side].findIndex(s => s.effect === 'rallyStandards');
   if (idx === -1) return;
@@ -351,16 +362,11 @@ function springRally(state, fallen, killerSide) {
     if (state.winner !== null || striker.dead) continue;
     const enemies = adjacentEnemies(state, striker);
     if (!enemies.length) continue;
-    const killer = enemies.find(e => !e.dead && unitAt(state, e.q, e.r) === e && e.side === killerSide && isKiller(state, e));
+    const killer = killerUnit && !killerUnit.dead
+      && enemies.some(e => e.id === killerUnit.id) ? killerUnit : null;
     const target = killer || enemies.slice().sort((a, b) => a.blocks - b.blocks || (a.id < b.id ? -1 : 1))[0];
     autoAttack(state, striker, target, { extra: 0, reason: 'rally' });
   }
-}
-
-// crude marker: the most recent 'destroyed' event names the killer side, not unit;
-// prefer any adjacent enemy that attacked this turn.
-function isKiller(state, enemy) {
-  return enemy.attacked === true;
 }
 
 // An immediate engine-driven strike (ambush / countercharge / rally).
@@ -384,7 +390,7 @@ function applyDice(state, att, tgt, dice, { melee, evade, canBattleBack }) {
   if (omens) gainFortuna(state, att.side, omens * C.OMEN_FORTUNA, 'omen');
 
   let held = false;
-  if (pushes > 0 && melee) held = springHoldTheLine(state, tgt);
+  if (pushes > 0) held = springHoldTheLine(state, tgt);
   const steadfast = tgt.steadfast && pushes > 0;
   if (held || tgt.steadfast) pushes = 0;
 
@@ -393,7 +399,7 @@ function applyDice(state, att, tgt, dice, { melee, evade, canBattleBack }) {
     hits, pushes, omens, held, steadfast, evade,
   });
 
-  if (hits > 0) damageUnit(state, tgt, hits, att.side, 'hits');
+  if (hits > 0) damageUnit(state, tgt, hits, att.side, 'hits', att);
   if (state.winner !== null) return { targetDied: tgt.dead, origHex, retreated: false };
 
   let retreated = false;
@@ -405,7 +411,7 @@ function applyDice(state, att, tgt, dice, { melee, evade, canBattleBack }) {
     const blocked = pushes - taken;
     if (blocked > 0 && !tgt.dead) {
       evt(state, { t: 'pushBlocked', unitId: tgt.id, blocked });
-      damageUnit(state, tgt, blocked, att.side, 'blocked-push');
+      damageUnit(state, tgt, blocked, att.side, 'blocked-push', att);
     }
   }
   if (state.winner !== null) return { targetDied: tgt.dead, origHex, retreated };
@@ -509,7 +515,7 @@ export function attackOdds(state, attackerId, targetId, { warcry = false } = {})
   if (!att || !tgt || att.dead || tgt.dead) return null;
   const melee = H.distance(att, tgt) === 1;
   const evade = melee && wouldEvade(state, att, tgt);
-  const n = evade ? C.EVADE_DICE
+  const n = evade ? C.EVADE_DICE + (warcry ? C.WARCRY_DICE : 0)
     : diceFor(state, att, tgt, { melee, extra: warcry ? C.WARCRY_DICE : 0 });
   const pHit = (7 - (tgt.type === 'general' ? C.GENERAL_HIT_MIN : C.HIT_MIN)) / 6;
   const pPush = evade ? 0 : 1 / 6;
@@ -562,8 +568,10 @@ function err(error) {
 // returns an error string, or null on success (state mutated in place)
 function run(s, side, a) {
   if (s.winner !== null && a.t !== 'chat') return 'game over';
-  // Battle Plans deployment is the one action both sides may take at once.
+  // Battle Plans deployment may come from either side at once, and a player
+  // must be able to strike their colors even on the enemy's turn.
   if (a.t === 'deploy') return doDeploy(s, side, a);
+  if (a.t === 'resign') { endGame(s, 1 - side, 'resign'); return null; }
   if (side !== s.turn) return 'not your turn';
 
   switch (a.t) {
@@ -578,7 +586,6 @@ function run(s, side, a) {
     case 'declinePursuit': return doPursue(s, side, a, false);
     case 'arm': return doArm(s, side, a);
     case 'endTurn': return doEndTurn(s, side, a);
-    case 'resign': endGame(s, 1 - side, 'resign'); return null;
     default: return 'unknown action';
   }
 }
@@ -592,7 +599,9 @@ function doDeploy(s, side, a) {
   if (a.default) {
     placements = mine.map(u => ({ id: u.id, q: u.q, r: u.r }));
   } else {
-    if (!Array.isArray(a.placements)) return 'bad placements';
+    if (!Array.isArray(a.placements) || a.placements.some(p => !p || typeof p !== 'object')) {
+      return 'bad placements';
+    }
     placements = a.placements.map(p => ({ id: p.id, q: p.q | 0, r: p.r | 0 }));
   }
   if (placements.length !== mine.length) return 'place every unit exactly once';
@@ -718,7 +727,7 @@ function doAttack(s, side, a) {
   }
   let warcry = false;
   if (a.warcry) {
-    if (s.fortuna[side] < C.WARCRY_COST) return 'not enough Fortuna for War Cry';
+    if (s.fortuna[side] < costFor(s, side, C.WARCRY_COST)) return 'not enough Fortuna for War Cry';
     warcry = true;
   }
   att.attacked = true;
@@ -736,9 +745,10 @@ function doAttack(s, side, a) {
     }
   }
 
-  if (warcry) spendFortuna(s, side, C.WARCRY_COST, 'warcry');
+  if (warcry) spendFortuna(s, side, costFor(s, side, C.WARCRY_COST), 'warcry');
   const evade = melee && wouldEvade(s, att, tgt);
-  const n = evade ? C.EVADE_DICE
+  // a War Cry still sharpens the parting shot at an evader
+  const n = evade ? C.EVADE_DICE + (warcry ? C.WARCRY_DICE : 0)
     : diceFor(s, att, tgt, { melee, extra: warcry ? C.WARCRY_DICE : 0 });
   const dice = rollDice(s, n);
   s.pending = {
@@ -754,7 +764,7 @@ function doReroll(s, side, a) {
   if (s.phase !== 'combat' || !s.pending) return 'wrong phase';
   const p = s.pending;
   if (p.rerolls >= C.REROLL_COSTS.length) return 'no rerolls left';
-  const cost = C.REROLL_COSTS[p.rerolls];
+  const cost = costFor(s, side, C.REROLL_COSTS[p.rerolls]);
   if (s.fortuna[side] < cost) return 'not enough Fortuna';
   const idxs = Array.isArray(a.indices) ? [...new Set(a.indices.map(i => i | 0))] : [];
   if (!idxs.length || idxs.some(i => i < 0 || i >= p.dice.length)) return 'bad dice selection';
@@ -813,7 +823,8 @@ function doArm(s, side, a) {
   if (!['order', 'move', 'battle'].includes(s.phase)) return 'wrong phase';
   if (!s.turnCtx || s.turnCtx.armedThisTurn >= C.ARMS_PER_TURN) return 'already armed this turn';
   if (s.scrolls[side].length >= C.MAX_SCROLLS) return 'scroll rack full';
-  if (s.fortuna[side] < C.ARM_COST) return 'not enough Fortuna';
+  const armCost = costFor(s, side, C.ARM_COST);
+  if (s.fortuna[side] < armCost) return 'not enough Fortuna';
   const def = STRATAGEMS[a.effect];
   if (!def) return 'unknown stratagem';
   let secret = null;
@@ -827,7 +838,7 @@ function doArm(s, side, a) {
     if (t === null || t === 'river') return 'pick a valid hex';
     secret = { q, r };
   }
-  spendFortuna(s, side, C.ARM_COST, 'arm');
+  spendFortuna(s, side, armCost, 'arm');
   s.turnCtx.armedThisTurn++;
   s.scrolls[side].push({ effect: a.effect, secret, turn: s.turnCount });
   evt(s, { t: 'armed', side, priv: { effect: a.effect, secret } });

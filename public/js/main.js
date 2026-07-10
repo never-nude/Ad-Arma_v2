@@ -5,7 +5,7 @@ import { C, UNIT_TYPES, SECTION_NAMES } from './engine/constants.js';
 import { TILES, STRATAGEMS } from './engine/council.js';
 import {
   createGame, applyAction, viewFor, aliveUnits, unitById,
-  orderableUnits, attackTargets, reachable, attackOdds,
+  orderableUnits, attackTargets, reachable, attackOdds, costFor,
 } from './engine/engine.js';
 import { aiAction } from './engine/ai.js';
 import * as H from './engine/hex.js';
@@ -206,6 +206,7 @@ function joinRoom(code, name, isCreator) {
 
   app.conn.on('joined', msg => {
     app.mySide = msg.seat;
+    app.busy = false;
     if (msg.started && msg.view) {
       entered = true;
       enterGame();
@@ -234,7 +235,11 @@ function joinRoom(code, name, isCreator) {
 
   app.conn.on('update', async msg => {
     app.busy = true;
+    // an in-progress deployment draft must survive the opponent's commit
+    const keepDraft = msg.view.phase === 'deploy' && !msg.view.deployed[app.mySide]
+      ? app.sel.draft : null;
     clearTransientUI();
+    if (keepDraft) app.sel.draft = keepDraft;
     app.prevView = app.view;
     app.view = msg.view;
     await animateEvents(msg.events || []);
@@ -257,10 +262,19 @@ function joinRoom(code, name, isCreator) {
     if (!entered) {
       hide('screen-lobby'); show('screen-menu');
       $('menu-error').textContent = msg.msg || 'Something went wrong.';
-    } else toast(msg.msg || 'Something went wrong.');
+    } else {
+      toast(msg.msg || 'Something went wrong.');
+      app.busy = false;
+      updateUI();
+    }
   });
 
   app.conn.on('reconnecting', () => toast('Reconnecting…'));
+  app.conn.on('dead', () => {
+    app.busy = false;
+    ui.banner('CONNECTION LOST', 4000);
+    toast('Connection lost — refresh the page to rejoin this room.', 8000);
+  });
   app.conn.connect();
 }
 
@@ -278,7 +292,12 @@ function showLobby(code) {
 function sendAction(action) {
   if (app.over) return;
   if (app.mode === 'sp') spHumanAct(action);
-  else if (app.conn) { clearTransientUI(); app.conn.action(action); }
+  else if (app.conn) {
+    if (app.busy) return; // one action in flight at a time — no double-spends
+    app.busy = true;
+    clearTransientUI();
+    app.conn.action(action);
+  }
 }
 
 // ============================================================ animation
@@ -573,6 +592,8 @@ function updateTopOnly() {
 function updateUI() {
   const v = app.view;
   if (!v) return;
+  // the dice tray must never outlive the combat decision it belongs to
+  if (v.phase !== 'combat') ui.hideDiceTray();
   ui.updateTopbar(v, app.mySide);
   ui.renderCouncil(v, myTurn() && v.phase === 'take', onTakeTile);
   if (v.phase === 'deploy' && canDeploy()) {
@@ -629,8 +650,9 @@ function refreshContext() {
     return;
   }
   const ctx = v.turnCtx;
-  const armBtn = { label: `📜 Arm (${C.ARM_COST}☘)`, cb: openArmPicker,
-    disabled: v.fortuna[app.mySide] < C.ARM_COST || v.scrolls[app.mySide].length >= C.MAX_SCROLLS || (ctx && ctx.armedThisTurn >= C.ARMS_PER_TURN) };
+  const armCost = costFor(v, app.mySide, C.ARM_COST);
+  const armBtn = { label: `📜 Arm (${armCost}☘)`, cb: openArmPicker,
+    disabled: v.fortuna[app.mySide] < armCost || v.scrolls[app.mySide].length >= C.MAX_SCROLLS || (ctx && ctx.armedThisTurn >= C.ARMS_PER_TURN) };
 
   switch (v.phase) {
     case 'take':
@@ -677,9 +699,9 @@ function refreshContext() {
           : 'No more attacks available.',
         [
           {
-            label: app.sel.warcry ? '🔥 War Cry ON' : `War Cry (+1 die, ${C.WARCRY_COST}☘)`,
+            label: app.sel.warcry ? '🔥 War Cry ON' : `War Cry (+1 die, ${costFor(v, app.mySide, C.WARCRY_COST)}☘)`,
             cls: app.sel.warcry ? 'btn-gold' : '',
-            disabled: v.fortuna[app.mySide] < C.WARCRY_COST && !app.sel.warcry,
+            disabled: v.fortuna[app.mySide] < costFor(v, app.mySide, C.WARCRY_COST) && !app.sel.warcry,
             cb: () => { app.sel.warcry = !app.sel.warcry; sfx.click(); refreshContext(); },
           },
           armBtn,
@@ -711,9 +733,10 @@ function openInteractiveTray() {
   if (!app.sel.rerollSel) app.sel.rerollSel = new Set();
   const sel = app.sel.rerollSel;
   const canReroll = p.rerolls < C.REROLL_COSTS.length;
-  const cost = canReroll ? C.REROLL_COSTS[p.rerolls] : 0;
+  const cost = canReroll ? costFor(v, app.mySide, C.REROLL_COSTS[p.rerolls]) : 0;
   const afford = canReroll && v.fortuna[app.mySide] >= cost;
   const hits = p.dice.filter(d => d >= hitMin).length;
+  const omens = p.dice.filter(d => d === C.OMEN_FACE).length;
   ui.showDiceTray({
     title: trayTitle({ attackerId: p.attackerId, targetId: p.targetId, warcry: p.warcry }),
     dice: p.dice,
@@ -722,7 +745,8 @@ function openInteractiveTray() {
     selected: sel,
     onToggle: i => { sel.has(i) ? sel.delete(i) : sel.add(i); sfx.click(); openInteractiveTray(); },
     info: `${hits} hit${hits === 1 ? '' : 's'} so far.` +
-      (afford ? ` Select dice to reroll (cost <b>${cost}☘</b>, you have ${v.fortuna[app.mySide]}).` : canReroll ? ' Not enough Fortuna to reroll.' : ' No rerolls left.'),
+      (afford ? ` Select dice to reroll (cost <b>${cost}☘</b>, you have ${v.fortuna[app.mySide]}).` : canReroll ? ' Not enough Fortuna to reroll.' : ' No rerolls left.') +
+      (omens && afford ? ' <br><small>Omens pay their Fortuna only if you keep them.</small>' : ''),
     buttons: [
       ...(afford ? [{
         label: `Reroll ${sel.size || ''} (${cost}☘)`,

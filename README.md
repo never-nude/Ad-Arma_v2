@@ -27,7 +27,7 @@ raise a private room and send a friend the 4-letter code)*
   arrange their armies; the engine reveals the musters simultaneously.
 - **Nightfall** — after 30 rounds each, dusk ends the battle. Nothing stalls.
 
-First to **5 Laurels** wins (a destroyed unit is one, the enemy General two).
+First to the field's **Laurel target** wins — 5 on the standard field (a destroyed unit is one, the enemy General two) — and while you trail by 2+, the gods discount every Fortuna price.
 Easy to learn — the whole teach is one screen — and the luck-to-skill valve
 means the better strategist wins the series, not every game.
 
