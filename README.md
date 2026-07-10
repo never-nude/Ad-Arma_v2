@@ -5,8 +5,8 @@ orders from a shared War Council, roll dice equal to your remaining soldiers,
 bribe Fortuna for rerolls — and seal secret stratagems the engine springs on
 your enemy at the worst possible moment.
 
-**Play it:** https://ad-arma-v2.playful-lab.workers.dev *(vs. the computer, or
-raise a private room and send a friend the 4-letter code)*
+**Play it:** https://ad-arma-v2.michael-kushman.workers.dev *(vs. the computer,
+or raise a private room and send a friend the 4-letter code)*
 
 ## Why it's fun (the design in one breath)
 
